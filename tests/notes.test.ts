@@ -466,6 +466,67 @@ const notesCases: TestCase[] = [
     token: "$userAToken",
     expectedStatus: 204,
   },
+
+  // ── share note: biên (owner / đã soft-delete) ─────────────────────
+  {
+    name: "POST /notes (A) note4 để test biên share → 201 (lưu note4Id)",
+    method: "post",
+    path: "/notes",
+    token: "$userAToken",
+    body: { title: "Note Share Biên", content: "abc" },
+    expectedStatus: 201,
+    save: { note4Id: "data.id" },
+  },
+  {
+    name: "POST /notes/$note4Id/share (A) → 200 (lưu shareToken4)",
+    method: "post",
+    path: "/notes/$note4Id/share",
+    token: "$userAToken",
+    expectedStatus: 200,
+    expect: [{ path: "data.shareToken", exists: true }],
+    save: { shareToken4: "data.shareToken" },
+  },
+  {
+    name: "POST /notes/$note4Id/share bằng user B → 404 (không phải chủ)",
+    method: "post",
+    path: "/notes/$note4Id/share",
+    token: "$userBToken",
+    expectedStatus: 404,
+  },
+  {
+    name: "GET /public/notes/$shareToken4 (không token) → 200 khi note còn sống",
+    method: "get",
+    path: "/public/notes/$shareToken4",
+    expectedStatus: 200,
+    expect: [{ path: "data.title", equals: "Note Share Biên" }],
+  },
+  {
+    name: "DELETE /notes/$note4Id (A) → 204 (soft-delete note đang share)",
+    method: "delete",
+    path: "/notes/$note4Id",
+    token: "$userAToken",
+    expectedStatus: 204,
+  },
+  {
+    name: "GET /public/notes/$shareToken4 sau soft-delete → 404 (không còn public)",
+    method: "get",
+    path: "/public/notes/$shareToken4",
+    expectedStatus: 404,
+  },
+  {
+    name: "POST /notes/$note4Id/share khi note đã soft-delete → 404",
+    method: "post",
+    path: "/notes/$note4Id/share",
+    token: "$userAToken",
+    expectedStatus: 404,
+  },
+  {
+    name: "DELETE /notes/trash/$note4Id (A) → 204 (xoá hẳn, dọn sạch)",
+    method: "delete",
+    path: "/notes/trash/$note4Id",
+    token: "$userAToken",
+    expectedStatus: 204,
+  },
 ];
 
 runCaseSuite(notesCases, {

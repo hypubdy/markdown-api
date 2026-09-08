@@ -177,7 +177,13 @@ export function buildOpenApiDocument(options: BuildOptions): Record<string, unkn
       operation.responses = responses;
 
       const method = route.method.toLowerCase() as (typeof METHOD_LOWER)[number];
-      const pathKey = fullPath.replace(/\/{/g, "/").replace(/:/g, "{");
+      // Chuyển path Express ":param" → OpenAPI "{param}" (từng segment, đóng mở ngoặc đủ)
+      const pathKey = fullPath
+        .split("/")
+        .map((segment) =>
+          segment.startsWith(":") ? `{${segment.slice(1)}}` : segment,
+        )
+        .join("/");
       paths[pathKey] = { ...(paths[pathKey] ?? {}), [method]: operation };
     }
   }
