@@ -5,9 +5,33 @@ import {
   type RequestHandler,
   type Response,
 } from "express";
+import type { ZodTypeAny } from "zod";
 import { asyncHandler } from "./async-handler";
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
+
+/**
+ * Metadata OpenAPI/Swagger gắn NGAY trên route (khai báo trong *.routes.ts).
+ * Generator src/swagger/build.ts đọc field này để sinh spec tự động
+ * ("single source of truth": route mô tả chính nó).
+ */
+export interface RouteOpenApi {
+  /** Mô tả ngắn endpoint — hiển thị trên Swagger UI */
+  summary?: string;
+  /** Mô tả dài (tuỳ chọn) */
+  description?: string;
+  /**
+   * Schema zod dạng { body?, query?, params? } — thường CHÍNH LÀ schema truyền
+   * cho middleware validate() của route. Generator chuyển zod → OpenAPI schema.
+   */
+  schema?: ZodTypeAny;
+  /** Mã thành công nếu khác 200 (vd 201 khi tạo resource) */
+  success?: number;
+  /** JSON Schema cho field data trong response thành công (inline hoặc {$ref}) */
+  data?: Record<string, unknown>;
+  /** Ghi đè mô tả các lỗi bổ sung: { "409": "Email đã được đăng ký", "403": "Cần admin" } */
+  errorDescriptions?: Record<string, string>;
+}
 
 /** Định nghĩa một endpoint trong bảng route */
 export interface RouteDefinition {
@@ -22,6 +46,8 @@ export interface RouteDefinition {
    * createRouter() tự bọc asyncHandler, mọi lỗi ném ra đều chảy về error-handler.
    */
   action: (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
+  /** Tài liệu OpenAPI của endpoint (sinh spec tự động) */
+  openapi?: RouteOpenApi;
 }
 
 /**

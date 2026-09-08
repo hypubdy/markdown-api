@@ -1,6 +1,7 @@
 node_modules/
 .cache-npm/
 dist/
+coverage/
 .env
 *.sqlite
 *.log

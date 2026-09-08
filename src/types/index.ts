@@ -28,3 +28,61 @@ export interface CreateUserInput {
   password: string;
   role?: UserRole;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Notes / Tags (BACKEND-PLAN.md mục 2) — giữ nguyên mọi kiểu cũ
+// ─────────────────────────────────────────────────────────────
+
+export type NoteStatus = "draft" | "published";
+
+/** Bản ghi note ở tầng ứng dụng (camelCase, timestamp đã chuẩn hoá ISO string) */
+export interface Note {
+  id: string;
+  ownerId: string;
+  title: string;
+  content: string;
+  status: NoteStatus;
+  /** null = còn sống; có giá trị = đang ở thùng rác */
+  deletedAt: string | null;
+  /** null = chưa public share */
+  shareToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Dữ liệu tạo note mới */
+export interface CreateNoteInput {
+  ownerId: string;
+  title: string;
+  content?: string; // thiếu → lưu ''
+  status?: NoteStatus; // thiếu → 'draft'
+}
+
+/** Bộ lọc + phân trang cho NoteRepository.list() */
+export interface NoteListFilters {
+  ownerId: string;
+  q?: string; // tìm trong title/content
+  status?: NoteStatus;
+  tag?: string; // tên tag chính xác
+  page: number; // ≥ 1
+  limit: number; // 1..100
+}
+
+/** Kết quả list() — total không phụ thuộc page/limit */
+export interface NoteListResult {
+  items: Note[];
+  total: number;
+}
+
+/** Dữ liệu sửa một phần note */
+export interface UpdateNoteInput {
+  title?: string;
+  content?: string;
+  status?: NoteStatus;
+}
+
+/** Một tag kèm số note đang sống mang nó */
+export interface TagCount {
+  name: string;
+  count: number;
+}

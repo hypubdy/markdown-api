@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "test:file": "TEST_DB_FILE=test.sqlite vitest run",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed.ts",
@@ -29,7 +30,9 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.23.0",
-    "zod": "^3.24.1"
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -39,6 +42,8 @@
     "@types/node": "^22.10.5",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "@vitest/coverage-v8": "^5.0.0",
     "esbuild": "^0.28.2",
     "supertest": "^7.2.2",
     "tsx": "^4.19.2",
