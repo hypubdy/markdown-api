@@ -127,9 +127,10 @@ export interface NoteRepository {
   findNoteTags(noteId: string): Promise<string[]>;
 }
 
-/** Chuẩn hoá timestamp: pg trả Date → ISO string; sqlite trả TEXT → giữ nguyên */
+/** Chuẩn hoá timestamp về ISO string (sqlite TEXT / pg Date / PostgREST timestamptz "+00:00") */
 function normalizeTimestamp(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : value;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
 }
 
 /** Map dòng notes (snake_case) → Note (camelCase); cột NULL giữ nguyên là null */

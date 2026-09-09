@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * TEST LUÔN CHẠY TRÊN SQLite (DB thật = PostgreSQL chỉ dùng khi chạy server).
+ * TEST LUÔN CHẠY TRÊN SQLite (DB thật = Supabase chỉ dùng khi chạy server).
  * - Mặc định: DB_FILE=":memory:" → DB trong RAM, mỗi worker 1 DB sạch, chạy song song nhanh.
  * - Debug: TEST_DB_FILE=test.sqlite npm run test:file → DB là FILE còn lại sau khi chạy
  *   để mở ra xem/kiểm tra dữ liệu; chạy tuần tự (fileParallelism=false) vì dùng chung 1 file.
@@ -11,7 +11,9 @@ import { defineConfig } from "vitest/config";
  * - include src/** ; loại các file điểm vào KHÔNG được test chạy tới
  *   (server.ts khởi động thật, seed.ts chạy độc lập).
  * - Lưu ý: bộ test là INTEGRATION (qua HTTP) nên % phản ánh độ phủ theo luồng HTTP;
- *   các driver PostgreSQL KHÔNG được nạp khi test chạy SQLite → hiện 0% (đúng bản chất).
+ *   driver Supabase CHỈ chạy khi nối Supabase thật (DB_DRIVER=supabase) nên KHÔNG được
+ *   nạp khi test chạy SQLite → loại khỏi coverage (như server.ts/seed.ts — điểm vào
+ *   không được test chạy tới).
  */
 const fileDb = process.env.TEST_DB_FILE;
 
@@ -32,7 +34,14 @@ export default defineConfig({
       reporter: ["text", "text-summary", "html", "json-summary"],
       include: ["src/**/*.ts"],
       // Loại: điểm vào không được test chạy tới + file type-only (không có code runtime)
-      exclude: ["src/server.ts", "src/seed.ts", "src/types/**"],
+      // + driver Supabase (chỉ chạy khi nối Supabase thật, không test được trên SQLite)
+      exclude: [
+        "src/server.ts",
+        "src/seed.ts",
+        "src/types/**",
+        "src/data/supabase.client.ts",
+        "src/data/*.supabase.repository.ts",
+      ],
       // Ngưỡng bắt buộc (toàn bộ code trong include) — fail nếu tụt dưới.
       // Đo lúc cài: Statements 72.1 / Branches 53.2 / Functions 71.2 / Lines 73.7
       thresholds: {

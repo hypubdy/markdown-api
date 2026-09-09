@@ -9,13 +9,14 @@ import {
   initDatabase,
 } from "./data/index";
 import { toSafeUser } from "./data/user.repository";
+import { ensureUtf8Console } from "./utils/utf8-console";
 
 /**
  * SEED DỮ LIỆU DEMO — chạy độc lập (không phải server):
  *   npm run seed            # thêm user demo còn thiếu + notes markdown mẫu (không đụng dữ liệu có sẵn)
  *   npm run seed -- --reset # XOÁ hết notes + tags + users rồi seed lại từ đầu (demo sạch)
  *
- * Dùng ĐÚNG driver theo env.DB_DRIVER — .env mặc định là PostgreSQL (docker).
+ * Dùng ĐÚNG driver theo env.DB_DRIVER — .env mặc định là SQLite; chạy thật dùng Supabase.
  * Idempotent: user theo email, notes chỉ seed khi user CHƯA có note nào.
  */
 
@@ -77,9 +78,40 @@ const x = 1;
 
 Thử gửi **PATCH /notes/:id** để cập nhật note này.`,
   },
+  {
+    title: "Demo sơ đồ Mermaid",
+    content: `# Sơ đồ Mermaid
+
+Frontend render \`\`\`mermaid\`\`\` ngay trong preview.
+
+## Flowchart
+
+\`\`\`mermaid
+flowchart LR
+  A[Đăng nhập] --> B{Vai trò}
+  B -- admin --> C[Quản trị users]
+  B -- user --> D[Quản lý ghi chú]
+  C --> E[Done]
+  D --> E
+\`\`\`
+
+## Sequence
+
+\`\`\`mermaid
+sequenceDiagram
+  participant FE as Frontend
+  participant BE as Backend
+  FE->>BE: POST /auth/login
+  BE-->>FE: { token, user }
+  FE->>BE: GET /notes
+  BE-->>FE: NoteListItem[]
+\`\`\`
+`,
+  },
 ];
 
 async function main(): Promise<void> {
+  ensureUtf8Console();
   await initDatabase();
   const usersRepo = await getUserRepository();
   const notesRepo = await getNoteRepository();

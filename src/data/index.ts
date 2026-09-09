@@ -1,20 +1,23 @@
 import type { DatabaseSync } from "node:sqlite";
-import { Pool } from "pg";
+import type { PostgrestClient } from "@supabase/postgrest-js";
+import { createSupabaseClient } from "./supabase.client";
+import { bootstrapSupabaseSchema } from "./supabase.bootstrap";
 import { env } from "../config/env";
-import { PgUserRepository } from "./user.pg.repository";
+import { SupabaseUserRepository } from "./user.supabase.repository";
 import type { NoteRepository } from "./note.repository";
 import type { UserRepository } from "./user.repository";
 
 /**
  * FACTORY TẦNG DỮ LIỆU — chọn driver theo env.DB_DRIVER:
- *   - "postgres" → pg Pool nối DATABASE_URL (chạy thật)
+ *   - "supabase" → PostgREST client nối SUPABASE_URL (chạy thật, chạy được trên
+ *                  Cloudflare Worker vì chỉ dùng fetch — không cần TCP socket)
  *   - "sqlite"   → node:sqlite ":memory:"/file (test & dev nhanh)
  *
  * LƯU Ý:
  * - Mọi thứ đều LAZY: driver (kể cả module node:sqlite) chỉ được nạp khi thực sự
- *   cần — nhờ vậy test set env TRƯỚC khi gọi, và chạy PostgreSQL không bị cảnh báo
+ *   cần — nhờ vậy test set env TRƯỚC khi gọi, và chạy Supabase không bị cảnh báo
  *   "SQLite experimental" từ việc import nhầm driver.
- * - User repo và Note repo DÙNG CHUNG 1 connection (pgPool / sqliteDb) để FK
+ * - User repo và Note repo DÙNG CHUNG 1 connection/1 client (sb / sqliteDb) để FK
  *   notes.owner_id → users.id được kiểm soát đúng trên cùng connection.
  */
 
@@ -24,15 +27,15 @@ export const ADMIN_PASSWORD = "admin123";
 let repository: UserRepository | undefined;
 let noteRepository: NoteRepository | undefined;
 let initPromise: Promise<void> | undefined;
-let pgPool: Pool | undefined;
+let sb: PostgrestClient | undefined;
 let sqliteDb: DatabaseSync | undefined;
 
 /** Tạo (1 lần) repository theo driver đã chọn và trả về */
 export async function getUserRepository(): Promise<UserRepository> {
   if (!repository) {
-    if (env.DB_DRIVER === "postgres") {
-      pgPool = new Pool({ connectionString: env.DATABASE_URL });
-      repository = new PgUserRepository(pgPool);
+    if (env.DB_DRIVER === "supabase") {
+      sb = createSupabaseClient();
+      repository = new SupabaseUserRepository(sb);
     } else {
       const { DatabaseSync } = await import("node:sqlite");
       const { SqliteUserRepository } = await import(
@@ -45,13 +48,15 @@ export async function getUserRepository(): Promise<UserRepository> {
   return repository;
 }
 
-/** Tạo (1 lần) note repository — DÙNG CHUNG pool/DatabaseSync với user repository */
+/** Tạo (1 lần) note repository — DÙNG CHUNG client/DatabaseSync với user repository */
 export async function getNoteRepository(): Promise<NoteRepository> {
   if (!noteRepository) {
-    await getUserRepository(); // đảm bảo pgPool/sqliteDb đã được mở
-    if (env.DB_DRIVER === "postgres") {
-      const { PgNoteRepository } = await import("./note.pg.repository");
-      noteRepository = new PgNoteRepository(pgPool!);
+    await getUserRepository(); // đảm bảo sb/sqliteDb đã được mở
+    if (env.DB_DRIVER === "supabase") {
+      const { SupabaseNoteRepository } = await import(
+        "./note.supabase.repository"
+      );
+      noteRepository = new SupabaseNoteRepository(sb!);
     } else {
       const { SqliteNoteRepository } = await import(
         "./note.sqlite.repository"
@@ -66,8 +71,13 @@ export async function getNoteRepository(): Promise<NoteRepository> {
 export function initDatabase(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
+      // Supabase: tự tạo bảng qua connection string (pg) nếu đặt DATABASE_URL.
+      // Nếu không đặt, yêu cầu bảng đã được tạo bằng supabase/schema.sql.
+      if (env.DB_DRIVER === "supabase" && env.DATABASE_URL) {
+        await bootstrapSupabaseSchema(env.DATABASE_URL);
+      }
       const userRepo = await getUserRepository();
-      await userRepo.init(); // 1) users
+      await userRepo.init(); // 1) users (Supabase: kiểm tra bảng, không tạo)
       const notes = await getNoteRepository();
       await notes.init(); // 2) notes, tags, note_tags, index
     })();
@@ -87,10 +97,11 @@ export async function clearAllUsers(): Promise<void> {
 /** Xoá toàn bộ notes + tags (test file-mode); note_tags tự sạch qua ON DELETE CASCADE */
 export async function clearAllNotes(): Promise<void> {
   await initDatabase();
-  if (env.DB_DRIVER === "postgres") {
-    await pgPool!.query("DELETE FROM note_tags");
-    await pgPool!.query("DELETE FROM notes");
-    await pgPool!.query("DELETE FROM tags");
+  if (env.DB_DRIVER === "supabase") {
+    // Delete theo FK: note_tags tự cascade, xoá notes rồi tags.
+    await sb!.from("note_tags").delete();
+    await sb!.from("notes").delete();
+    await sb!.from("tags").delete();
   } else {
     sqliteDb!.exec("DELETE FROM note_tags");
     sqliteDb!.exec("DELETE FROM notes");
@@ -128,10 +139,8 @@ export async function seedDemoAdmin(options: { reset?: boolean } = {}): Promise<
 
 /** Đóng kết nối DB (gọi khi tắt server — graceful shutdown) */
 export async function closeDatabase(): Promise<void> {
-  if (pgPool) {
-    await pgPool.end();
-    pgPool = undefined;
-  }
+  // Supabase: client HTTP stateless — không cần đóng, chỉ reset reference.
+  sb = undefined;
   if (sqliteDb) {
     sqliteDb.close();
     sqliteDb = undefined;

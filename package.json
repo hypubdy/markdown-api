@@ -8,7 +8,8 @@
   },
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node scripts/dev.mjs",
+    "dev:local": "node scripts/dev.mjs --local",
     "build": "rm -rf dist && esbuild src/server.ts src/seed.ts --bundle --platform=node --format=esm --packages=external --outdir=dist --sourcemap",
     "start": "node dist/server.js",
     "test": "vitest run",
@@ -17,12 +18,10 @@
     "test:file": "TEST_DB_FILE=test.sqlite vitest run",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed.ts",
-    "seed:reset": "tsx src/seed.ts --reset",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
-    "db:reset": "docker compose down -v"
+    "seed:reset": "tsx src/seed.ts --reset"
   },
   "dependencies": {
+    "@supabase/postgrest-js": "^2.116.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

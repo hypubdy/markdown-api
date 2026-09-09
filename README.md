@@ -16,7 +16,7 @@ cho mọi module.
 express-ts-app/
 ├── package.json
 ├── tsconfig.json
-├── docker-compose.yml        # PostgreSQL local (docker compose up -d)
+├── supabase/schema.sql       # DDL tạo bảng trong Supabase (chạy 1 lần trong SQL Editor)
 ├── .env.example              # copy thành .env rồi sửa cho phù hợp
 └── src/
     ├── server.ts             # Điểm khởi động: seed dữ liệu + listen + graceful shutdown
@@ -47,10 +47,11 @@ express-ts-app/
     │   ├── index.ts           #   factory chọn driver theo env.DB_DRIVER + init/seed/close
     │   ├── user.repository.ts #   interface UserRepository + helper (hash, map dòng DB)
     │   ├── user.sqlite.repository.ts  #   SQLite (node:sqlite) — dùng cho TEST & dev nhanh
-    │   ├── user.pg.repository.ts      #   PostgreSQL (pg) — dùng cho chạy thật
+    │   ├── user.supabase.repository.ts # Supabase (PostgREST) — chạy thật, chạy được trên Worker
     │   ├── note.repository.ts #   interface NoteRepository (notes + tags) + mapper/DDL
     │   ├── note.sqlite.repository.ts  #   driver SQLite cho notes/tags/note_tags
-    │   └── note.pg.repository.ts      #   driver PostgreSQL cho notes/tags/note_tags
+    │   ├── note.supabase.repository.ts #   driver Supabase cho notes/tags/note_tags
+    │   └── supabase.client.ts #   tạo PostgREST client (fetch-based, không TCP socket)
     ├── utils/
     │   ├── router.ts         # ★ RouteTable + createRouter: biến object route thành Router
     │   ├── ApiError.ts, async-handler.ts, jwt.ts
@@ -145,11 +146,12 @@ Client
 
 ```bash
 npm install
-cp .env.example .env   # sửa JWT_SECRET tuỳ ý (mặc định đã có .env sẵn)
+cp .env.example .env   # sửa JWT_SECRET tuỳ ý + điền SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY
 
-npm run dev            # chạy dev (tsx watch, tự reload)
+npm run dev            # chạy dev — MẶC ĐỊNH dùng SUPABASE (tsx watch, tự reload)
+npm run dev -- --local # (hoặc `npm run dev:local`) — chạy SQLITE, không cần DB server
 npm run build          # đóng gói bằng esbuild → dist/server.js + dist/seed.js
-npm start              # chạy bản build
+npm start              # chạy bản build (dùng DB theo .env: mặc định supabase)
 ```
 
 Import trong code dùng đường dẫn **không có đuôi file** (vd `from "./modules/index"`) nhờ
@@ -158,7 +160,7 @@ còn dev (`tsx`) và test (`vitest`) vốn đã hỗ trợ sẵn — không cầ
 
 Yêu cầu: Node.js ≥ 18.
 
-## Cơ sở dữ liệu — SQLite (test/dev) và PostgreSQL (thật)
+## Cơ sở dữ liệu — SQLite (test/dev) và Supabase (chạy thật)
 
 Toàn bộ action chỉ phụ thuộc **interface `UserRepository`** (`src/data/user.repository.ts`);
 driver cụ thể do factory trong `src/data/index.ts` chọn theo biến môi trường:
@@ -166,21 +168,34 @@ driver cụ thể do factory trong `src/data/index.ts` chọn theo biến môi t
 | Môi trường    | DB_DRIVER  | Cấu hình                                                                 |
 |---------------|------------|--------------------------------------------------------------------------|
 | **Test**      | `sqlite`   | Ép buộc bởi `vitest.config.ts` (`DB_FILE=":memory:"`) — DB trong RAM, mỗi worker một DB sạch, không cần cài gì |
-| **Dev nhanh** | `sqlite`   | `DB_FILE=dev.sqlite` (file, có trong `.env` mặc định) — không cần DB server |
-| **Chạy thật** | `postgres` | `DATABASE_URL=postgres://user:pass@host:5432/db` — dùng driver `pg`        |
+| **Dev (mặc định)** | `supabase` | `npm run dev` — chạy trên Supabase (PostgreSQL), tự tạo bảng nếu có `DATABASE_URL` |
+| **Dev local** | `sqlite`   | `npm run dev -- --local` (hoặc `npm run dev:local`) — `DB_FILE=dev.sqlite`, không cần DB server |
+| **Chạy thật** | `supabase` | `npm start`/`npm run seed` — `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (fetch-based) |
 
-**PostgreSQL local bằng Docker** (mặc định `.env` đã trỏ tới container này):
+**Supabase** là PostgreSQL chạy trên nền tảng Supabase, được truy cập qua **PostgREST (HTTP)** —
+driver dùng `@supabase/postgrest-js` (fetch) nên **không cần TCP socket như `pg`**, do đó **chạy được
+trên Cloudflare Worker**. Bảng vẫn là PostgreSQL thật (có FK, index, transaction server-side).
 
-```bash
-npm run db:up        # = docker compose up -d — khởi động PG (volume giữ dữ liệu)
-npm run dev          # chạy server nối PG qua DATABASE_URL trong .env
-npm run db:down      # dừng container (dữ liệu vẫn còn trong volume)
-npm run db:reset     # dừng và xoá CẢ volume dữ liệu (bắt đầu lại từ đầu)
-```
+**Cài Supabase (một lần):**
 
-Cấu hình nằm trong `docker-compose.yml` (postgres:16-alpine, cổng 5432, volume `pgdata`).
-Bảng `users` tự được tạo lần đầu server khởi động (`initDatabase()`), tài khoản admin
-`admin@example.com` / `admin123` được seed nếu chưa có.
+1. Tạo project tại [supabase.com](https://supabase.com) → lấy `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY`
+   ở **Project → Settings → API** (dùng key **service_role**, không dùng anon key).
+2. Sửa `.env`:
+   ```bash
+   DB_DRIVER=supabase
+   SUPABASE_URL=https://<project-ref>.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
+   DATABASE_URL=postgresql://postgres:<DB_PASSWORD>@db.<project-ref>.supabase.co:5432/postgres
+   npm run dev
+   ```
+   - Nếu đặt `DATABASE_URL`, app **TỰ TẠO BẢNG** (`users`/`notes`/`tags`/`note_tags`) lúc khởi động qua `pg`
+     — giống driver cũ, không cần làm gì thêm.
+   - Nếu **không** đặt `DATABASE_URL`, bạn phải tạo bảng trước bằng cách chạy
+     [`supabase/schema.sql`](./supabase/schema.sql) trong **SQL Editor** (hoặc `supabase db push`).
+
+> ⚠️ App tự quản lý auth bằng JWT riêng (không dùng Supabase Auth), nên schema.sql **tắt RLS** cho các
+> bảng. Nếu bạn tự bật RLS, hãy tạo policy phù hợp (service_role vẫn bypass RLS nên app vẫn chạy được,
+> nhưng các client lạ dùng anon key sẽ bị chặn).
 
 **Seed dữ liệu demo** (`src/seed.ts`) — 15 user (2 admin + 13 user, mật khẩu `matkhau123`):
 
@@ -189,19 +204,21 @@ npm run seed         # thêm user demo còn thiếu (idempotent theo email, khô
 npm run seed:reset   # XOÁ hết user rồi seed lại từ đầu
 ```
 
-Seed chạy trên driver đang chọn trong `.env` — PostgreSQL (docker) hoặc SQLite đều được.
+Seed chạy trên driver đang chọn trong `.env` — Supabase hoặc SQLite đều được.
 
-```bash
-# Chạy thật bằng PostgreSQL (sửa .env):
-#   DB_DRIVER=postgres
-#   DATABASE_URL=postgres://postgres:postgres@localhost:5432/express_app
-npm run dev
-```
+> 💡 **"Lỗi font chữ" khi seed/log**: dữ liệu trong DB (Supabase/SQLite) LUÔN là UTF-8 chuẩn
+> (đã kiểm tra codepoint). Nếu console Windows hiện tên như `Ngu?n V?n An`, đó là do **console
+> mặc định dùng codepage 850/1252**, không phải dữ liệu hỏng. `src/utils/utf8-console.ts` tự chạy
+> `chcp 65001` khi khởi động seed/server để render đúng; nếu terminal của bạn vẫn sai, hãy dùng
+> **Windows Terminal / VS Code terminal** (mặc định UTF-8) hoặc chạy `chcp 65001` trước.
 
-SQLite dùng module `node:sqlite` tích hợp sẵn (Node ≥ 22.13) nên **không cần cài dependency
-native** — đó là lý do test chạy trên SQLite rất dễ mock/khởi tạo. PostgreSQL chạy qua
-package `pg`. Nếu sau này thêm bảng mới, chỉ cần thêm interface + 2 driver + factory —
-action không đổi dòng nào.
+Trong khi **test luôn chạy SQLite `:memory:`** (không cần DB server), **chạy thật dùng Supabase** —
+vì đều phụ thuộc chung interface nên hành vi nghiệp vụ giống nhau. Nếu sau này thêm bảng mới, chỉ cần
+thêm interface + 2 driver + factory — action không đổi dòng nào.
+
+> Lưu ý về Cloudflare Worker: `@supabase/postgrest-js` dùng `fetch` không dùng `net`/`tls`, nên tầng dữ
+> liệu này chạy được trong môi trường Worker. Bản thân Express server vẫn chạy Node (không đổi); để
+> đưa cả app lên Worker cần entry/worker-format riêng (ngoài phạm vi thay đổi tầng dữ liệu).
 
 ## Kiểm thử (integration test)
 
@@ -254,8 +271,9 @@ Lưu ý: các case trong cùng file dùng chung một DB nên chạy tuần tự
 (xem trực quan trên trình duyệt) và `coverage/coverage-summary.json` (dùng cho CI).
 Có ngưỡng bắt buộc (mặc định statements/lines/functions ≥ 70%, branches ≥ 50% — xem
 `vitest.config.ts`) → lệnh **fail (exit ≠ 0)** nếu tụt dưới. Lưu ý: bộ test là integration
-qua HTTP trên SQLite nên driver PostgreSQL hiển thị 0% là bình thường (không được nạp khi
-test chạy SQLite); muốn đo driver PG cần chạy test với DB PG thật.
+qua HTTP trên SQLite nên driver Supabase (chỉ chạy khi nối Supabase thật) KHÔNG được nạp khi
+test chạy SQLite → file `src/data/*.supabase.repository.ts` + `supabase.client.ts` được loại
+khỏi coverage (xem `vitest.config.ts`); muốn đo chúng cần chạy test với `DB_DRIVER=supabase`.
 
 **Debug test với file SQLite**: mặc định test chạy trên `:memory:` (DB trong RAM, không có
 file để mở xem). Khi cần debug dữ liệu, chạy file mode — DB là **file `test.sqlite` còn
@@ -359,9 +377,12 @@ theo — không bao giờ lệch với validate thật. Trên UI dùng nút **Au
 
 ## Ghi chú nâng cấp lên production
 
-- **Dữ liệu**: chuyển sang PostgreSQL chỉ bằng env (`DB_DRIVER=postgres` + `DATABASE_URL`).
-  Khi mở rộng, thêm repository cho từng bảng (interface + driver sqlite/pg) theo mẫu
-  trong `src/data/`. Test luôn tự chạy SQLite `:memory:` nên không cần DB server.
+- **Dữ liệu**: chuyển sang Supabase chỉ bằng env (`DB_DRIVER=supabase` + `SUPABASE_URL` +
+  `SUPABASE_SERVICE_ROLE_KEY`), nhớ tạo bảng bằng `supabase/schema.sql` trước. Khi mở rộng, thêm
+  repository cho từng bảng (interface + driver sqlite/supabase) theo mẫu trong `src/data/`.
+  Test luôn tự chạy SQLite `:memory:` nên không cần DB server.
+- **Cloudflare Worker**: tầng dữ liệu dùng PostgREST (fetch) nên chạy được trên Worker. Đưa cả app
+  lên Worker cần entry `fetch`-handler riêng (ngoài phạm vi tầng dữ liệu).
 - **CORS**: cấu hình `app.use(cors({ origin: [...] }))` thay vì mở cho tất cả.
 - **Bảo mật**: luôn đổi `JWT_SECRET`; cân nhắc refresh token + đenlist token.
 - **Rate limiting**: thêm `express-rate-limit` cho các route auth.

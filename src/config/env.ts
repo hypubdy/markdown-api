@@ -13,19 +13,28 @@ const envSchema = z
     JWT_EXPIRES_IN: z.string().default("15m"),
 
     // ── Cơ sở dữ liệu ─────────────────────────────────────────────
-    // sqlite: chạy/mock dễ (test dùng), postgres: chạy thật
-    DB_DRIVER: z.enum(["postgres", "sqlite"]).default("sqlite"),
+    // sqlite: chạy/mock dễ (test dùng, dev nhanh không cần DB server)
+    // supabase: chạy thật — PostgreSQL của Supabase, dùng driver fetch-based
+    //           (@supabase/postgrest-js) nên chạy được trên Cloudflare Worker.
+    DB_DRIVER: z.enum(["supabase", "sqlite"]).default("sqlite"),
     // sqlite: đường dẫn file db (":memory:" = db trong RAM, dùng cho test)
     DB_FILE: z.string().default(":memory:"),
-    // postgres: chuỗi kết nối, vd postgres://user:pass@localhost:5432/db
+    // supabase: URL dự án Supabase, vd https://<project-ref>.supabase.co
+    SUPABASE_URL: z.string().optional(),
+    // supabase: service_role key (bỏ qua RLS) — dùng cho phía server/quản trị
+    SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+    // supabase (tùy chọn): connection string Postgres — CHỈ dùng để TỰ TẠO BẢNG
+    // (DDL) lúc khởi động qua `pg`. Nếu không đặt, bạn phải tạo bảng trước bằng
+    // supabase/schema.sql (SQL Editor) rồi app mới chạy được.
     DATABASE_URL: z.string().optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.DB_DRIVER === "postgres" && !val.DATABASE_URL) {
+    if (val.DB_DRIVER === "supabase" && (!val.SUPABASE_URL || !val.SUPABASE_SERVICE_ROLE_KEY)) {
       ctx.addIssue({
         code: "custom",
-        message: "Thiếu DATABASE_URL khi DB_DRIVER=postgres",
-        path: ["DATABASE_URL"],
+        message:
+          "Thiếu SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY khi DB_DRIVER=supabase",
+        path: ["SUPABASE_URL"],
       });
     }
   });

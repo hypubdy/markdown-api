@@ -1,8 +1,10 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { closeDatabase, seedDemoAdmin } from "./data/index";
+import { ensureUtf8Console } from "./utils/utf8-console";
 
 async function main() {
+  ensureUtf8Console();
   // Khởi tạo DB (bảng + tài khoản admin demo) trước khi nhận request
   await seedDemoAdmin();
 

@@ -48,9 +48,16 @@ export function toSafeUser(user: User): SafeUser {
   return safe;
 }
 
-/** Chuẩn hoá timestamp từ DB về ISO string (pg trả Date, sqlite trả TEXT) */
+/**
+ * Chuẩn hoá timestamp từ DB về ISO string (đồng nhất giữa 3 driver):
+ * - sqlite trả TEXT ISO "2025-…Z"
+ * - PG (pg) trả Date
+ * - Supabase (PostgREST) trả timestamptz dạng "2025-…+00:00"
+ * Mọi giá trị đều được ép về ISO string để client nhận kiểu đồng nhất.
+ */
 function normalizeTimestamp(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : value;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
 }
 
 /** Map một dòng dữ liệu thô của DB thành kiểu User của ứng dụng */
