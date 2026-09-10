@@ -30,6 +30,9 @@ export default defineConfig({
       AUTH_PROVIDER: "local",
       DB_DRIVER: "sqlite",
       DB_FILE: fileDb ?? ":memory:",
+      // Giữ log im lặng khi chạy test (test nào cần soi log thì tự set env + resetLoggerConfig,
+      // xem tests/logger.test.ts). Không đặt thì .env đang để NODE_ENV=development → log ồn.
+      LOG_LEVEL: "warn",
     },
     // Chạy tuần tự trong file: các case dùng chung 1 DB (cần thứ tự để lưu biến).
     // Khi debug bằng file, đồng thời chạy tuần tự GIỮA các file (dùng chung 1 file DB).

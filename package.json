@@ -8,9 +8,9 @@
   },
   "main": "dist/server.js",
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "dev:local": "node scripts/dev.mjs --local",
-    "dev:worker": "wrangler dev",
+    "dev": "tsx scripts/dev.ts",
+    "dev:local": "tsx scripts/dev.ts --local",
+    "dev:worker": "wrangler dev --var DB_DRIVER:d1",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/server.ts src/seed.ts --bundle --platform=node --format=esm --packages=external --outdir=dist --sourcemap",
     "build:worker": "wrangler deploy --dry-run --outdir dist-worker",
     "deploy": "wrangler deploy",
@@ -22,7 +22,8 @@
     "test:clerk": "vitest run --config vitest.clerk.config.ts",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed.ts",
-    "seed:reset": "tsx src/seed.ts --reset"
+    "seed:reset": "tsx src/seed.ts --reset",
+    "migrate:sqlite": "tsx scripts/migrate-sqlite.ts"
   },
   "dependencies": {
     "@hono/clerk-auth": "^3.1.1",

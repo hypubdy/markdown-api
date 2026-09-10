@@ -15,6 +15,8 @@ export default defineConfig({
       CLERK_SECRET_KEY: "sk_test_mock",
       DB_DRIVER: "sqlite",
       DB_FILE: ":memory:",
+      // Xem vitest.config.ts — giữ log im lặng khi chạy test.
+      LOG_LEVEL: "warn",
     },
     sequence: { concurrent: false },
   },

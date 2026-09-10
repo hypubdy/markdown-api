@@ -1,6 +1,6 @@
 # Hono TypeScript Markdown API — Node + Cloudflare Workers
 
-REST API lưu trữ Markdown viết bằng **Hono + TypeScript**, tổ chức theo module tính năng. Production chạy trên Cloudflare Workers với Clerk + Supabase PostgREST; Node local/test vẫn hỗ trợ SQLite và JWT nội bộ. Mọi thứ của một tính
+REST API lưu trữ Markdown viết bằng **Hono + TypeScript**, tổ chức theo module tính năng. Production chạy trên Cloudflare Workers với Clerk + Cloudflare D1; Node local/test dùng SQLite và JWT nội bộ. Mọi thứ của một tính
 năng đều nằm gọn trong thư mục module của nó:
 
 - `<module>.routes.ts` — khai báo endpoint dưới dạng **object** (bảng route)
@@ -16,7 +16,7 @@ cho mọi module.
 express-ts-app/
 ├── package.json
 ├── tsconfig.json
-├── supabase/schema.sql       # DDL tạo bảng trong Supabase (chạy 1 lần trong SQL Editor)
+├── d1/migrations/            # Migration schema cho Cloudflare D1
 ├── .env.example              # copy thành .env rồi sửa cho phù hợp
 └── src/
     ├── server.ts             # Điểm khởi động: seed dữ liệu + listen + graceful shutdown
@@ -47,11 +47,11 @@ express-ts-app/
     │   ├── index.ts           #   factory chọn driver theo env.DB_DRIVER + init/seed/close
     │   ├── user.repository.ts #   interface UserRepository + helper (hash, map dòng DB)
     │   ├── user.sqlite.repository.ts  #   SQLite (node:sqlite) — dùng cho TEST & dev nhanh
-    │   ├── user.supabase.repository.ts # Supabase (PostgREST) — chạy thật, chạy được trên Worker
+    │   ├── user.d1.repository.ts       # Cloudflare D1 — chạy production trên Worker
     │   ├── note.repository.ts #   interface NoteRepository (notes + tags) + mapper/DDL
     │   ├── note.sqlite.repository.ts  #   driver SQLite cho notes/tags/note_tags
-    │   ├── note.supabase.repository.ts #   driver Supabase cho notes/tags/note_tags
-    │   └── supabase.client.ts #   tạo PostgREST client (fetch-based, không TCP socket)
+    │   ├── note.d1.repository.ts       #   driver D1 cho notes/tags/note_tags
+    │   └── index.worker.ts             #   factory D1 dùng binding env.DB
     ├── utils/
     │   ├── router.ts         # ★ RouteTable + createRouter: biến object route thành Router
     │   ├── ApiError.ts, async-handler.ts, jwt.ts
@@ -112,6 +112,43 @@ Client
 [app.ts] error-handler  ←── nếu action ném ApiError, lỗi tự động chảy về đây
 ```
 
+## Logging (request + query DB)
+
+Mọi request và **mọi query DB** đều được log kèm thời gian, gắn chung một `requestId`
+để nối các dòng của cùng một request. Mẫu log thật (chế độ D1/Worker):
+
+```
+2026-09-10T15:34:38.866Z DEBUG [req 513f43e7] → GET /api/v1/notes
+2026-09-10T15:34:39.114Z WARN  [req 513f43e7] query CHẬM notes.list 247.21ms (ngưỡng 50ms)
+2026-09-10T15:34:39.252Z WARN  [req 513f43e7] query CHẬM notes.findNoteTags 137.89ms (ngưỡng 50ms)
+2026-09-10T15:34:39.550Z INFO  [req 513f43e7] GET /api/v1/notes 200 683.58ms queries=21 dbMs=7308.03 slowQueries=21
+2026-09-10T15:34:39.550Z WARN  [req 513f43e7] request CHẬM GET /api/v1/notes 683.58ms (ngưỡng 500ms)
+```
+
+Dòng cuối cho biết ngay: request này gọi **21 query**, tổng **7,3 giây** nằm trong DB
+(21 query chạy song song nên tường chỉ 683ms) — đúng chỗ cần tối ưu.
+
+**Cách hoạt động:** `requestLogger` (src/middleware/request-logger.middleware.ts) sinh
+`requestId`, rồi bọc `services` bằng `Proxy` (src/utils/query-logger.ts). Nhờ vậy **không
+phải sửa repository hay action nào**, và các driver (sqlite / D1 Worker) đều được
+log giống nhau. Số liệu nằm trong object `QueryStats` riêng của từng request nên không lẫn
+khi chạy song song.
+
+| Env | Mặc định | Ý nghĩa |
+|---|---|---|
+| `LOG_LEVEL` | dev `debug`, test `warn`, prod `info` | `debug` \| `info` \| `warn` \| `error` \| `silent` |
+| `LOG_QUERIES` | dev `true`, prod/test `false` | In 1 dòng cho mỗi query DB |
+| `LOG_QUERY_ARGS` | `false` | In kèm tham số query (password/token tự động bị che) |
+| `SLOW_QUERY_MS` | `50` | Query vượt ngưỡng → nâng lên mức WARN |
+| `SLOW_REQUEST_MS` | `500` | Request vượt ngưỡng → nâng lên mức WARN |
+| `LOG_JSON` | prod `true` | Log JSON 1 dòng (tiện đẩy vào hệ thống log) |
+| `LOG_COLOR` | `true` nếu stdout là TTY | Tô màu log |
+
+Lưu ý:
+- Chỉ query **phát sinh trong một request** mới được log; `seed.ts` / `clearAllNotes()` chạy ngoài request thì không.
+- `users.create` bao gồm cả **bcrypt hash (~60–70ms)** nên hay bị gắn cờ "query chậm" dù phần DB rất nhanh — không phải lỗi DB.
+- Khi chạy test, log được giữ ở mức `warn` (xem `vitest.config.ts`). Test muốn soi log thì tự set env + gọi `resetLoggerConfig()` — ví dụ `tests/logger.test.ts`.
+
 ## Thêm một module mới (ví dụ: `products`)
 
 1. **Schema** (nếu có payload cần validate): tạo `src/modules/products/products.schemas.ts`:
@@ -146,12 +183,12 @@ Client
 
 ```bash
 npm install
-cp .env.example .env   # sửa JWT_SECRET tuỳ ý + điền SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY
+cp .env.example .env   # sửa JWT_SECRET tuỳ ý
 
-npm run dev            # chạy dev — MẶC ĐỊNH dùng SUPABASE (tsx watch, tự reload)
-npm run dev -- --local # (hoặc `npm run dev:local`) — chạy SQLITE, không cần DB server
+npm run dev            # chạy dev trên SQLite local (tsx watch, tự reload)
+npm run dev:worker     # chạy Worker local với Cloudflare D1 qua Wrangler
 npm run build          # đóng gói bằng esbuild → dist/server.js + dist/seed.js
-npm start              # chạy bản build (dùng DB theo .env: mặc định supabase)
+npm start              # chạy bản build Node (dùng SQLite theo .env)
 ```
 
 Import trong code dùng đường dẫn **không có đuôi file** (vd `from "./modules/index"`) nhờ
@@ -162,19 +199,18 @@ Yêu cầu: Node.js ≥ 22 cho SQLite local/test; Cloudflare Workers dùng runti
 
 ## Deploy Cloudflare Workers
 
-Production Worker dùng **Clerk** và **Supabase PostgREST**. Worker không bundle `node:sqlite`, `pg` hoặc bước tự tạo schema. Trước khi deploy, chạy `supabase/schema.sql` trong Supabase SQL Editor.
+Production Worker dùng **Clerk** và **Cloudflare D1**. Worker truy vấn D1 bằng binding `env.DB`, dùng prepared statements và `batch()` cho các thao tác nhiều câu lệnh. Schema được quản lý bằng `d1/migrations/` và chạy bằng Wrangler.
 
 ```bash
 npm run dev:worker       # Wrangler local runtime
 npm run build:worker     # dry-run bundle, không deploy
-npx wrangler secret put SUPABASE_URL
-npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler d1 migrations apply markdown-api --local
 npx wrangler secret put CLERK_PUBLISHABLE_KEY
 npx wrangler secret put CLERK_SECRET_KEY
 npm run deploy
 ```
 
-Các giá trị không bí mật `NODE_ENV=production`, `AUTH_PROVIDER=clerk`, `DB_DRIVER=supabase` nằm trong `wrangler.jsonc`. Không commit service-role key hoặc Clerk secret.
+Các giá trị không bí mật `NODE_ENV=production`, `AUTH_PROVIDER=clerk`, `DB_DRIVER=d1` và binding `DB` nằm trong `wrangler.jsonc`. Cần thay `REPLACE_WITH_D1_DATABASE_ID` bằng ID D1 thật trước khi deploy. Không commit Clerk secret.
 
 ## Xác thực: JWT nội bộ (`local`) hoặc Clerk SSO (`clerk`)
 
@@ -206,42 +242,32 @@ Khi `AUTH_PROVIDER=clerk`:
 npm run test:clerk    # chạy tests/clerk.test.ts với AUTH_PROVIDER=clerk + Clerk mock
 ```
 
-## Cơ sở dữ liệu — SQLite (test/dev) và Supabase (chạy thật)
+## Cơ sở dữ liệu — SQLite local/test và Cloudflare D1 production
 
-Toàn bộ action chỉ phụ thuộc **interface `UserRepository`** (`src/data/user.repository.ts`);
-driver cụ thể do factory trong `src/data/index.ts` chọn theo biến môi trường:
+Toàn bộ action chỉ phụ thuộc interface repository; driver cụ thể được chọn theo runtime:
 
-| Môi trường    | DB_DRIVER  | Cấu hình                                                                 |
-|---------------|------------|--------------------------------------------------------------------------|
-| **Test**      | `sqlite`   | Ép buộc bởi `vitest.config.ts` (`DB_FILE=":memory:"`) — DB trong RAM, mỗi worker một DB sạch, không cần cài gì |
-| **Dev (mặc định)** | `supabase` | `npm run dev` — chạy trên Supabase (PostgreSQL), tự tạo bảng nếu có `DATABASE_URL` |
-| **Dev local** | `sqlite`   | `npm run dev -- --local` (hoặc `npm run dev:local`) — `DB_FILE=dev.sqlite`, không cần DB server |
-| **Chạy thật** | `supabase` | `npm start`/`npm run seed` — `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (fetch-based) |
+| Môi trường | DB_DRIVER | Cấu hình |
+|---|---|---|
+| **Test** | `sqlite` | `vitest.config.ts` ép `DB_FILE=":memory:"`, không cần database server |
+| **Dev Node** | `sqlite` | `npm run dev`, lưu tại `DB_FILE=dev.sqlite` |
+| **Worker local** | `d1` | `npm run dev:worker`, dùng D1 local của Wrangler |
+| **Production Worker** | `d1` | binding `DB` trong `wrangler.jsonc`, migration chạy bằng Wrangler |
 
-**Supabase** là PostgreSQL chạy trên nền tảng Supabase, được truy cập qua **PostgREST (HTTP)** —
-driver dùng `@supabase/postgrest-js` (fetch) nên **không cần TCP socket như `pg`**, do đó **chạy được
-trên Cloudflare Worker**. Bảng vẫn là PostgreSQL thật (có FK, index, transaction server-side).
+Cloudflare D1 dùng SQLite serverless ở gần Worker. Repository D1 dùng prepared statements cho truy vấn
+đơn và `D1Database.batch()` cho các thao tác cần nhiều câu lệnh/transaction, nên loại bỏ các vòng HTTP
+PostgREST giữa Worker và database.
 
-**Cài Supabase (một lần):**
+**Tạo và migrate D1:**
 
-1. Tạo project tại [supabase.com](https://supabase.com) → lấy `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY`
-   ở **Project → Settings → API** (dùng key **service_role**, không dùng anon key).
-2. Sửa `.env`:
-   ```bash
-   DB_DRIVER=supabase
-   SUPABASE_URL=https://<project-ref>.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
-   DATABASE_URL=postgresql://postgres:<DB_PASSWORD>@db.<project-ref>.supabase.co:5432/postgres
-   npm run dev
-   ```
-   - Nếu đặt `DATABASE_URL`, app **TỰ TẠO BẢNG** (`users`/`notes`/`tags`/`note_tags`) lúc khởi động qua `pg`
-     — giống driver cũ, không cần làm gì thêm.
-   - Nếu **không** đặt `DATABASE_URL`, bạn phải tạo bảng trước bằng cách chạy
-     [`supabase/schema.sql`](./supabase/schema.sql) trong **SQL Editor** (hoặc `supabase db push`).
+```bash
+npx wrangler d1 create markdown-api
+# Điền database_id được trả về vào wrangler.jsonc
+npx wrangler d1 migrations apply markdown-api --local
+npx wrangler d1 migrations apply markdown-api --remote
+```
 
-> ⚠️ App tự quản lý auth bằng JWT riêng (không dùng Supabase Auth), nên schema.sql **tắt RLS** cho các
-> bảng. Nếu bạn tự bật RLS, hãy tạo policy phù hợp (service_role vẫn bypass RLS nên app vẫn chạy được,
-> nhưng các client lạ dùng anon key sẽ bị chặn).
+Workflow GitHub Actions tự chạy migration remote trước bước deploy. API token Cloudflare cần quyền D1
+để thao tác migration; nếu token hiện tại chỉ có quyền Workers, hãy cấp thêm quyền D1 phù hợp.
 
 **Seed dữ liệu demo** (`src/seed.ts`) — 15 user (2 admin + 13 user, mật khẩu `matkhau123`):
 
@@ -250,21 +276,16 @@ npm run seed         # thêm user demo còn thiếu (idempotent theo email, khô
 npm run seed:reset   # XOÁ hết user rồi seed lại từ đầu
 ```
 
-Seed chạy trên driver đang chọn trong `.env` — Supabase hoặc SQLite đều được.
+Seed Node chạy trên SQLite local. Dữ liệu production được tạo/sync trong D1 qua Worker.
 
-> 💡 **"Lỗi font chữ" khi seed/log**: dữ liệu trong DB (Supabase/SQLite) LUÔN là UTF-8 chuẩn
+> 💡 **"Lỗi font chữ" khi seed/log**: dữ liệu trong DB (D1/SQLite) LUÔN là UTF-8 chuẩn
 > (đã kiểm tra codepoint). Nếu console Windows hiện tên như `Ngu?n V?n An`, đó là do **console
 > mặc định dùng codepage 850/1252**, không phải dữ liệu hỏng. `src/utils/utf8-console.ts` tự chạy
 > `chcp 65001` khi khởi động seed/server để render đúng; nếu terminal của bạn vẫn sai, hãy dùng
 > **Windows Terminal / VS Code terminal** (mặc định UTF-8) hoặc chạy `chcp 65001` trước.
 
-Trong khi **test luôn chạy SQLite `:memory:`** (không cần DB server), **chạy thật dùng Supabase** —
-vì đều phụ thuộc chung interface nên hành vi nghiệp vụ giống nhau. Nếu sau này thêm bảng mới, chỉ cần
-thêm interface + 2 driver + factory — action không đổi dòng nào.
-
-> Lưu ý về Cloudflare Worker: `@supabase/postgrest-js` dùng `fetch` không dùng `net`/`tls`, nên tầng dữ
-> liệu này chạy được trong môi trường Worker. Bản thân Express server vẫn chạy Node (không đổi); để
-> đưa cả app lên Worker cần entry/worker-format riêng (ngoài phạm vi thay đổi tầng dữ liệu).
+Trong khi **test luôn chạy SQLite `:memory:`**, production Worker dùng D1; cả hai cùng triển khai
+interface repository nên hành vi nghiệp vụ giữ nguyên.
 
 ## Kiểm thử (integration test)
 
@@ -317,9 +338,8 @@ Lưu ý: các case trong cùng file dùng chung một DB nên chạy tuần tự
 (xem trực quan trên trình duyệt) và `coverage/coverage-summary.json` (dùng cho CI).
 Có ngưỡng bắt buộc (mặc định statements/lines/functions ≥ 70%, branches ≥ 50% — xem
 `vitest.config.ts`) → lệnh **fail (exit ≠ 0)** nếu tụt dưới. Lưu ý: bộ test là integration
-qua HTTP trên SQLite nên driver Supabase (chỉ chạy khi nối Supabase thật) KHÔNG được nạp khi
-test chạy SQLite → file `src/data/*.supabase.repository.ts` + `supabase.client.ts` được loại
-khỏi coverage (xem `vitest.config.ts`); muốn đo chúng cần chạy test với `DB_DRIVER=supabase`.
+qua HTTP trên SQLite nên driver D1 Worker không được nạp khi test Node chạy SQLite; các file
+`src/data/*.d1.repository.ts` được kiểm tra qua Worker build và sẽ có thể bổ sung test binding riêng.
 
 **Debug test với file SQLite**: mặc định test chạy trên `:memory:` (DB trong RAM, không có
 file để mở xem). Khi cần debug dữ liệu, chạy file mode — DB là **file `test.sqlite` còn
@@ -423,12 +443,10 @@ theo — không bao giờ lệch với validate thật. Trên UI dùng nút **Au
 
 ## Ghi chú nâng cấp lên production
 
-- **Dữ liệu**: chuyển sang Supabase chỉ bằng env (`DB_DRIVER=supabase` + `SUPABASE_URL` +
-  `SUPABASE_SERVICE_ROLE_KEY`), nhớ tạo bảng bằng `supabase/schema.sql` trước. Khi mở rộng, thêm
-  repository cho từng bảng (interface + driver sqlite/supabase) theo mẫu trong `src/data/`.
-  Test luôn tự chạy SQLite `:memory:` nên không cần DB server.
-- **Cloudflare Worker**: tầng dữ liệu dùng PostgREST (fetch) nên chạy được trên Worker. Đưa cả app
-  lên Worker cần entry `fetch`-handler riêng (ngoài phạm vi tầng dữ liệu).
+- **Dữ liệu**: production Worker dùng D1 (`DB_DRIVER=d1` + binding `DB`), schema nằm trong
+  `d1/migrations/` và chạy bằng Wrangler. Node local/test dùng SQLite `:memory:` hoặc `dev.sqlite`.
+- **Cloudflare Worker**: `src/data/index.worker.ts` chọn repository D1 riêng, không dùng Supabase
+  PostgREST và không chạy DDL trong request.
 - **CORS**: cấu hình `app.use(cors({ origin: [...] }))` thay vì mở cho tất cả.
 - **Bảo mật**: luôn đổi `JWT_SECRET`; cân nhắc refresh token + đenlist token.
 - **Rate limiting**: thêm `express-rate-limit` cho các route auth.

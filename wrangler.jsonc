@@ -11,6 +11,14 @@
   "vars": {
     "NODE_ENV": "production",
     "AUTH_PROVIDER": "clerk",
-    "DB_DRIVER": "supabase"
-  }
+    "DB_DRIVER": "d1"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "markdown-api",
+      "database_id": "0bb75fae-e386-45bc-8b3e-be0adfe3939c",
+      "migrations_dir": "d1/migrations"
+    }
+  ]
 }

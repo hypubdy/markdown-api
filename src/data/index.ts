@@ -33,6 +33,9 @@ let sqliteDb: DatabaseSync | undefined;
 /** Tạo (1 lần) repository theo driver đã chọn và trả về */
 export async function getUserRepository(): Promise<UserRepository> {
   if (!repository) {
+    if (env.DB_DRIVER === "d1") {
+      throw new Error("DB_DRIVER=d1 chỉ dùng trong Cloudflare Worker; hãy dùng wrangler dev hoặc DB_DRIVER=sqlite");
+    }
     if (env.DB_DRIVER === "supabase") {
       sb = createSupabaseClient();
       repository = new SupabaseUserRepository(sb);
@@ -52,6 +55,9 @@ export async function getUserRepository(): Promise<UserRepository> {
 export async function getNoteRepository(): Promise<NoteRepository> {
   if (!noteRepository) {
     await getUserRepository(); // đảm bảo sb/sqliteDb đã được mở
+    if (env.DB_DRIVER === "d1") {
+      throw new Error("DB_DRIVER=d1 chỉ dùng trong Cloudflare Worker; hãy dùng wrangler dev hoặc DB_DRIVER=sqlite");
+    }
     if (env.DB_DRIVER === "supabase") {
       const { SupabaseNoteRepository } = await import(
         "./note.supabase.repository"

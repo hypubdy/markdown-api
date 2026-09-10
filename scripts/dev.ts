@@ -2,7 +2,7 @@
 /**
  * LAUNCHER `npm run dev` — quyết định DB theo flag:
  *   - Mặc định (không có flag): chạy SUPABASE (PostgreSQL) — chạy thật.
- *   - `--local`: chạy SQLITE (node:sqlite, file dev.sqlite) — không cần DB server.
+ *   - `--local`: chạy SQLITE (node:sqlite, file dev.sqlite) — vẫn giữ AUTH_PROVIDER từ .env.
  *
  * Cách dùng:
  *   npm run dev                  # Supabase
@@ -15,10 +15,10 @@
 import { spawn } from "node:child_process";
 
 const local = process.argv.slice(2).includes("--local");
-process.env.DB_DRIVER = local ? "sqlite" : "supabase";
+process.env.DB_DRIVER = "sqlite";
 
 console.log(
-  `[dev] DB_DRIVER=${process.env.DB_DRIVER}${local ? " (SQLite local)" : " (Supabase)"}`,
+  `[dev] DB_DRIVER=${process.env.DB_DRIVER} (SQLite local)${local ? "" : " (use wrangler dev for D1)"}; AUTH_PROVIDER=${process.env.AUTH_PROVIDER ?? "from .env"}`,
 );
 
 const child = spawn("npx tsx watch src/server.ts", {

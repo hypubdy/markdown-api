@@ -39,10 +39,9 @@ jobs:
           {
             echo "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN"
             echo "CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID"
-            echo "DATABASE_URL=$DATABASE_URL"
           } >> "$GITHUB_ENV"
           # Keep only application secrets for Cloudflare Worker secret storage.
-          grep -E '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|CLERK_PUBLISHABLE_KEY|CLERK_SECRET_KEY|JWT_SECRET)=' .env > .runtime-secrets
+          grep -E '^(CLERK_PUBLISHABLE_KEY|CLERK_SECRET_KEY|JWT_SECRET)=' .env > .runtime-secrets
 
       - name: Install dependencies
         run: npm ci
@@ -50,13 +49,10 @@ jobs:
       - name: Verify
         run: npm run typecheck && npm test
 
-      - name: Run Supabase migrations
+      - name: Run D1 migrations
         shell: bash
-        env:
-          SUPABASE_DB_URL: ${{ env.DATABASE_URL }}
         run: |
-          test -n "$SUPABASE_DB_URL" || { echo "Missing DATABASE_URL in ENV_FILE"; exit 1; }
-          npx supabase db push --db-url "$SUPABASE_DB_URL" --include-all
+          npx wrangler d1 migrations apply markdown-api --remote
 
       - name: Upload application secrets to Worker
         shell: bash

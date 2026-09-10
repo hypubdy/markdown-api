@@ -11,7 +11,7 @@ const envSchema = z
     CLERK_PUBLISHABLE_KEY: z.string().optional(),
     CLERK_SECRET_KEY: z.string().optional(),
     CLERK_CLOCK_SKEW_MS: z.coerce.number().int().min(0).default(60_000),
-    DB_DRIVER: z.enum(["supabase", "sqlite"]).default("sqlite"),
+    DB_DRIVER: z.enum(["d1", "supabase", "sqlite"]).default("sqlite"),
     DB_FILE: z.string().default(":memory:"),
     SUPABASE_URL: z.string().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
