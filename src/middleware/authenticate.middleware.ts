@@ -20,11 +20,16 @@ export const authenticate: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (env.AUTH_PROVIDER === "clerk") {
       const auth = getAuth(c);
       if (!auth?.userId) throw ApiError.unauthorized("Clerk session token khong hop le hoac da het han");
-      const clerk = c.get("clerk" as never) as { users: { getUser(id: string): Promise<Parameters<typeof syncUserFromClerkUser>[0]> } };
-      const user = await syncUserFromClerkUser(
-        await clerk.users.getUser(auth.userId),
-        await c.get("services").getUserRepository(),
-      );
+      const users = await c.get("services").getUserRepository();
+      let user = await users.findByClerkUserId(auth.userId);
+      if (!user) {
+        const clerk = c.get("clerk" as never) as { users: { getUser(id: string): Promise<Parameters<typeof syncUserFromClerkUser>[0]> } };
+        user = await syncUserFromClerkUser(
+          await clerk.users.getUser(auth.userId),
+          users,
+          auth.userId,
+        );
+      }
       c.set("user", { id: user.id, email: user.email, role: user.role });
     } else {
       const header = c.req.header("Authorization");

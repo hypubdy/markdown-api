@@ -22,9 +22,18 @@ CREATE TABLE IF NOT EXISTS public.users (
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'user'
                 CHECK (role IN ('admin', 'user')),
+  clerk_user_id TEXT UNIQUE,
   created_at    TIMESTAMPTZ NOT NULL,
   updated_at    TIMESTAMPTZ NOT NULL
 );
+
+-- Migration for existing deployments: safe to run repeatedly.
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS clerk_user_id TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_clerk_user_id_unique
+  ON public.users (clerk_user_id)
+  WHERE clerk_user_id IS NOT NULL;
 
 -- 2) notes -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.notes (

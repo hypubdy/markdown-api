@@ -19,6 +19,7 @@ export interface UserRow {
   email: string;
   password_hash: string;
   role: string;
+  clerk_user_id?: string | null;
   created_at: string | Date;
   updated_at: string | Date;
 }
@@ -29,6 +30,8 @@ export interface UserRepository {
   /** Tạo user mới (hash mật khẩu, tự sinh id) */
   create(input: CreateUserInput): Promise<User>;
   findByEmail(email: string): Promise<User | null>;
+  findByClerkUserId(clerkUserId: string): Promise<User | null>;
+  setClerkUserId(id: string, clerkUserId: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   findAll(): Promise<User[]>;
   /** Đổi role, trả user mới hoặc null nếu không tồn tại */
@@ -68,6 +71,7 @@ export function mapUserRow(row: UserRow): User {
     email: row.email,
     passwordHash: row.password_hash,
     role: row.role as UserRole,
+    ...(row.clerk_user_id ? { clerkUserId: row.clerk_user_id } : {}),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   };
@@ -81,6 +85,7 @@ export const CREATE_USERS_TABLE = `
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+    clerk_user_id TEXT UNIQUE,
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL
   )

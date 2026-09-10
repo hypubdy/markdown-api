@@ -9,7 +9,7 @@ import {
 } from "./user.repository";
 
 const SELECT_COLUMNS =
-  "id, name, email, password_hash, role, created_at, updated_at";
+  "id, name, email, password_hash, role, clerk_user_id, created_at, updated_at";
 
 /**
  * Driver SUPABASE (PostgREST qua @supabase/postgrest-js) — dùng cho chạy thật và
@@ -59,6 +59,23 @@ export class SupabaseUserRepository implements UserRepository {
       .select(SELECT_COLUMNS);
     if (error) throw error;
     return mapUserRow((data as UserRow[])[0]);
+  }
+
+  async findByClerkUserId(clerkUserId: string): Promise<User | null> {
+    const { data, error } = await this.sb
+      .from("users")
+      .select(SELECT_COLUMNS)
+      .eq("clerk_user_id", clerkUserId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapUserRow(data as UserRow) : null;
+  }
+
+  async setClerkUserId(id: string, clerkUserId: string): Promise<User | null> {
+    const { data, error } = await this.sb.from("users").update({ clerk_user_id: clerkUserId, updated_at: new Date().toISOString() }).eq("id", id).select(SELECT_COLUMNS);
+    if (error) throw error;
+    const row = (data as UserRow[] | null)?.[0];
+    return row ? mapUserRow(row) : null;
   }
 
   async findByEmail(email: string): Promise<User | null> {

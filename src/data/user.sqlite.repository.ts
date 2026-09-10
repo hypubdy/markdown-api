@@ -83,6 +83,19 @@ export class SqliteUserRepository implements UserRepository {
     return user;
   }
 
+  async findByClerkUserId(clerkUserId: string): Promise<User | null> {
+    this.ensureTables();
+    const row = this.db.prepare(`SELECT ${SELECT_COLUMNS} FROM users WHERE clerk_user_id = ?`).get(clerkUserId) as UserRow | undefined;
+    return row ? mapUserRow(row) : null;
+  }
+
+  async setClerkUserId(id: string, clerkUserId: string): Promise<User | null> {
+    this.ensureTables();
+    this.db.prepare(`UPDATE users SET clerk_user_id = ?, updated_at = ? WHERE id = ?`).run(clerkUserId, new Date().toISOString(), id);
+    const row = this.db.prepare(`SELECT ${SELECT_COLUMNS} FROM users WHERE id = ?`).get(id) as UserRow | undefined;
+    return row ? mapUserRow(row) : null;
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     this.ensureTables();
     const row = this.selectByEmailStmt.get(email.toLowerCase()) as
