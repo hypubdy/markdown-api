@@ -4,7 +4,7 @@ Workflow `.github/workflows/deploy-cloudflare.yml` tự chạy khi push lên `ma
 
 ## GitHub Secret duy nhất
 
-Vào **Repository → Settings → Secrets and variables → Actions → New repository secret** và tạo đúng một secret:
+Vào **Repository → Settings → Environments → production → Environment secrets → Add secret** và tạo đúng một secret:
 
 - `ENV_FILE`: dán toàn bộ nội dung file `.env` production, gồm cả `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID`.
 
