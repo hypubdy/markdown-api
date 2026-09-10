@@ -7,6 +7,8 @@ let initialized: Promise<void> | undefined;
 /** Cloudflare Worker entry; schema migrations run separately via supabase/schema.sql. */
 export default {
   async fetch(request: Request, env: Record<string, string>, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
+    // Worker bindings arrive per request; expose them to the shared config layer.
+    Object.assign(process.env, env);
     if (env.AUTH_PROVIDER && env.AUTH_PROVIDER !== "clerk") {
       return Response.json({ success: false, message: "Cloudflare Worker chỉ hỗ trợ AUTH_PROVIDER=clerk" }, { status: 500 });
     }

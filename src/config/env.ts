@@ -10,8 +10,6 @@ const envSchema = z
     AUTH_PROVIDER: z.enum(["local", "clerk"]).default("local"),
     CLERK_PUBLISHABLE_KEY: z.string().optional(),
     CLERK_SECRET_KEY: z.string().optional(),
-    // Dung sai dong ho (ms) khi verify Clerk session token (claim nbf/exp).
-    // May dev/VM thuong lech vai chuc giay so voi server Clerk -> mac dinh 60s.
     CLERK_CLOCK_SKEW_MS: z.coerce.number().int().min(0).default(60_000),
     DB_DRIVER: z.enum(["supabase", "sqlite"]).default("sqlite"),
     DB_FILE: z.string().default(":memory:"),
@@ -28,11 +26,27 @@ const envSchema = z
     }
   });
 
-const parsed = envSchema.safeParse(process.env);
-if (!parsed.success) {
-  console.error("Invalid environment configuration:", parsed.error.flatten());
-  process.exit(1);
+export type AppEnvConfig = z.infer<typeof envSchema>;
+
+function readEnv(): AppEnvConfig {
+  const source = typeof process !== "undefined" && process.env ? process.env : {};
+  const parsed = envSchema.safeParse(source);
+  if (!parsed.success) {
+    throw new Error(`Invalid environment configuration: ${JSON.stringify(parsed.error.flatten())}`);
+  }
+  return parsed.data;
 }
 
-export const env = parsed.data;
-export const isProduction = env.NODE_ENV === "production";
+// Resolve lazily: Cloudflare Worker bindings are available only during fetch().
+export const env = new Proxy({} as AppEnvConfig, {
+  get(_target, property: string) {
+    return readEnv()[property as keyof AppEnvConfig];
+  },
+});
+
+export const isProduction = new Proxy({} as { value: boolean }, {
+  get(_target, property: string) {
+    if (property === "value") return readEnv().NODE_ENV === "production";
+    return undefined;
+  },
+}) as unknown as boolean;
