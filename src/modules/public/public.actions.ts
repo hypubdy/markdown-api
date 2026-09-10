@@ -1,27 +1,14 @@
-import type { Request, Response } from "express";
-import { getNoteRepository } from "../../data/index";
+﻿import type { AppContext } from "../../types/hono";
+import { validated } from "../../middleware/validate.middleware";
 import { ApiError } from "../../utils/ApiError";
 
-/**
- * ACTIONS của module public — KHÔNG yêu cầu đăng nhập (mount riêng, ngoài authenticate).
- * Token lạ / đã thu hồi / note đã soft-delete → 404 như thể không tồn tại.
- */
-
-/** GET /public/notes/:shareToken — xem note được chia sẻ công khai */
-export async function getPublicNote(
-  req: Request,
-  res: Response,
-): Promise<void> {
-  const repo = await getNoteRepository();
-
-  const note = await repo.findByShareToken(req.params.shareToken);
+export async function getPublicNote(c: AppContext) {
+  const { shareToken } = validated<{ shareToken: string }>(c, "params");
+  const note = await (await c.get("services").getNoteRepository()).findByShareToken(shareToken);
   if (!note) {
-    throw ApiError.notFound(
-      "Liên kết chia sẻ không tồn tại hoặc đã bị thu hồi",
-    );
+    throw ApiError.notFound("Liên kết chia sẻ không tồn tại hoặc đã bị thu hồi");
   }
-
-  res.json({
+  return c.json({
     success: true,
     data: {
       id: note.id,
@@ -31,3 +18,5 @@ export async function getPublicNote(
     },
   });
 }
+
+

@@ -1,5 +1,5 @@
-import type { Express } from "express";
-import request from "supertest";
+import type { Hono } from "hono";
+import type { AppEnv } from "../../src/types/hono";
 import { expect } from "vitest";
 
 /**
@@ -55,7 +55,7 @@ const DEFAULT_VARS: Record<string, unknown> = {
  *                    ghi đè biến mặc định nếu trùng key
  */
 export function createCaseRunner(
-  app: Express,
+  app: Hono<AppEnv>,
   initialVars: Record<string, unknown> = {},
 ) {
   const vars: Record<string, unknown> = { ...DEFAULT_VARS, ...initialVars };
@@ -143,39 +143,34 @@ export function createCaseRunner(
     }
   }
 
-  /** Gọi request theo test case */
-  async function exec(case_: TestCase): Promise<request.Response> {
+  /** Gọi request trực tiếp qua Hono Fetch API. */
+  async function exec(case_: TestCase): Promise<{ status: number; body: unknown }> {
     const url = `/api/v1${resolveString(case_.path)}`;
     const headers: Record<string, string> = {};
     if (case_.token) headers.Authorization = `Bearer ${resolveValue(case_.token)}`;
     const body = resolveBody(case_.body);
+    if (body !== undefined) headers["Content-Type"] = "application/json";
 
-    switch (case_.method) {
-      case "get":
-        return request(app).get(url).set(headers);
-      case "post":
-        return request(app).post(url).set(headers).send(body);
-      case "patch":
-        return request(app).patch(url).set(headers).send(body);
-      case "delete":
-        return request(app).delete(url).set(headers).send(body);
+    const response = await app.request(url, {
+      method: case_.method.toUpperCase(),
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    let parsed: unknown = undefined;
+    if (text) {
+      try { parsed = JSON.parse(text); } catch { parsed = text; }
     }
+    return { status: response.status, body: parsed };
   }
 
   /** Chạy một case: gọi request → assert status/expect → lưu biến cho case sau */
   async function run(case_: TestCase): Promise<void> {
     const res = await exec(case_);
-
     expect(res.status).toBe(case_.expectedStatus);
-
-    for (const rule of case_.expect ?? []) {
-      checkRule(res.body, rule);
-    }
-
+    for (const rule of case_.expect ?? []) checkRule(res.body, rule);
     if (case_.save) {
-      for (const [name, path] of Object.entries(case_.save)) {
-        vars[name] = getPath(res.body, path);
-      }
+      for (const [name, path] of Object.entries(case_.save)) vars[name] = getPath(res.body, path);
     }
   }
 

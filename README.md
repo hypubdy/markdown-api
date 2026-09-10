@@ -1,6 +1,6 @@
-# Express TypeScript — chia theo Module (routes + actions) và Middleware
+# Hono TypeScript Markdown API — Node + Cloudflare Workers
 
-Dự án mẫu Express + TypeScript tổ chức theo **module theo tính năng**. Mọi thứ của một tính
+REST API lưu trữ Markdown viết bằng **Hono + TypeScript**, tổ chức theo module tính năng. Production chạy trên Cloudflare Workers với Clerk + Supabase PostgREST; Node local/test vẫn hỗ trợ SQLite và JWT nội bộ. Mọi thứ của một tính
 năng đều nằm gọn trong thư mục module của nó:
 
 - `<module>.routes.ts` — khai báo endpoint dưới dạng **object** (bảng route)
@@ -158,7 +158,53 @@ Import trong code dùng đường dẫn **không có đuôi file** (vd `from "./
 `moduleResolution: "Bundler"`; bản chạy thật được esbuild bundle (`--packages=external`),
 còn dev (`tsx`) và test (`vitest`) vốn đã hỗ trợ sẵn — không cần viết `.js` ở đuôi import.
 
-Yêu cầu: Node.js ≥ 18.
+Yêu cầu: Node.js ≥ 22 cho SQLite local/test; Cloudflare Workers dùng runtime Fetch/Web Crypto.
+
+## Deploy Cloudflare Workers
+
+Production Worker dùng **Clerk** và **Supabase PostgREST**. Worker không bundle `node:sqlite`, `pg` hoặc bước tự tạo schema. Trước khi deploy, chạy `supabase/schema.sql` trong Supabase SQL Editor.
+
+```bash
+npm run dev:worker       # Wrangler local runtime
+npm run build:worker     # dry-run bundle, không deploy
+npx wrangler secret put SUPABASE_URL
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put CLERK_PUBLISHABLE_KEY
+npx wrangler secret put CLERK_SECRET_KEY
+npm run deploy
+```
+
+Các giá trị không bí mật `NODE_ENV=production`, `AUTH_PROVIDER=clerk`, `DB_DRIVER=supabase` nằm trong `wrangler.jsonc`. Không commit service-role key hoặc Clerk secret.
+
+## Xác thực: JWT nội bộ (`local`) hoặc Clerk SSO (`clerk`)
+
+Chọn provider qua env `AUTH_PROVIDER` (`.env.example`):
+
+| AUTH_PROVIDER | Cách đăng nhập | Frontend gửi gì trong `Authorization: Bearer …` |
+|---|---|---|
+| `local` (mặc định) | `POST /auth/login`, `POST /auth/register` → JWT nội bộ (JWT_SECRET) | JWT nội bộ |
+| `clerk` | SSO qua Clerk (Google/GitHub…, bật ở Clerk Dashboard) | Clerk **session token** (lấy bằng `getToken()` phía client) |
+
+Khi `AUTH_PROVIDER=clerk`:
+
+- Backend verify chữ ký Clerk session token (JWKS, không cần gọi mạng cho mỗi request),
+  rồi **tự đồng bộ tài khoản nội bộ theo email chính** của Clerk:
+  đã có user trùng email (tạo bằng mật khẩu/SSO trước) → dùng luôn (giữ id, role, ghi chú);
+  chưa có → tạo user mới với mật khẩu ngẫu nhiên (không login bằng mật khẩu được).
+- Role lúc tạo user mới lấy từ **Clerk public metadata** `role` (`"admin"` → admin, ngược lại `user`).
+  Muốn tài khoản SSO là admin: đặt metadata trên Clerk Dashboard, hoặc đổi role bằng API admin.
+- `POST /auth/login` & `/auth/register` trả **410 Gone** (đăng nhập mật khẩu đã tắt —
+  token JWT nội bộ sẽ không được `authenticate` chấp nhận ở chế độ này).
+- Khi **không** có phiên Clerk hợp lệ: các route cần đăng nhập trả 401 chuẩn.
+- **Lệch đồng hồ**: nếu máy chạy server chậm hơn server Clerk vài chục giây, Clerk
+  từ chối token do claim `nbf` chưa tới giờ hiệu lực (`token-not-active-yet`).
+  Dung sai mặc định **60 giây** (`CLERK_CLOCK_SKEW_MS`, đơn vị ms) — chỉnh lại nếu cần.
+
+**Test chế độ Clerk** (mock `@clerk/express`, không gọi mạng):
+
+```bash
+npm run test:clerk    # chạy tests/clerk.test.ts với AUTH_PROVIDER=clerk + Clerk mock
+```
 
 ## Cơ sở dữ liệu — SQLite (test/dev) và Supabase (chạy thật)
 

@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "markdown-api",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-10",
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  "alias": {
+    "./src/data/index.ts": "./src/data/index.worker.ts",
+    "./src/data/index": "./src/data/index.worker.ts"
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "AUTH_PROVIDER": "clerk",
+    "DB_DRIVER": "supabase"
+  }
+}

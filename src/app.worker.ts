@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import type { AppEnv, RuntimeServices } from "./types/hono";
-import * as nodeServices from "./data/index";
 import { clerkAuthenticationMiddleware } from "./middleware/authenticate.middleware";
 import { errorHandler } from "./middleware/error-handler.middleware";
 import { notFoundHandler } from "./middleware/not-found.middleware";
@@ -10,16 +9,9 @@ import { requestLogger } from "./middleware/request-logger.middleware";
 import { apiMountGroups, apiRouter } from "./modules/index";
 import { buildOpenApiDocument, mountSwagger } from "./swagger/build";
 
-const openapiDocument = buildOpenApiDocument({
-  info: {
-    title: "Hono — API lưu trữ Markdown",
-    version: "1.0.0",
-    description: "REST API notes markdown, users, tags, public sharing và Clerk authentication.",
-  },
-  groups: apiMountGroups,
-});
+const document = buildOpenApiDocument({ info: { title: "Hono — API lưu trữ Markdown", version: "1.0.0" }, groups: apiMountGroups });
 
-export function createApp(services: RuntimeServices = nodeServices): Hono<AppEnv> {
+export function createWorkerApp(services: RuntimeServices): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => { c.set("services", services); await next(); });
   app.use("*", secureHeaders());
@@ -27,7 +19,7 @@ export function createApp(services: RuntimeServices = nodeServices): Hono<AppEnv
   app.use("*", requestLogger);
   app.use("*", clerkAuthenticationMiddleware);
   app.route("/api/v1", apiRouter);
-  mountSwagger(app, openapiDocument);
+  mountSwagger(app, document);
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
   return app;

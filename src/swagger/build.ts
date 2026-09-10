@@ -1,5 +1,6 @@
-import type { Express } from "express";
-import swaggerUi from "swagger-ui-express";
+import type { Hono } from "hono";
+import { swaggerUI } from "@hono/swagger-ui";
+import type { AppEnv } from "../types/hono";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ZodTypeAny } from "zod";
 import type { RouteTable } from "../utils/router";
@@ -191,7 +192,7 @@ export function buildOpenApiDocument(options: BuildOptions): Record<string, unkn
   return {
     openapi: "3.0.3",
     info: options.info,
-    servers: [{ url: "http://localhost:3000/api/v1" }],
+    servers: [{ url: "/api/v1" }],
     tags: [...new Set(options.groups.map((g) => g.tag))].map((name) => ({ name })),
     components: {
       securitySchemes: {
@@ -203,13 +204,8 @@ export function buildOpenApiDocument(options: BuildOptions): Record<string, unkn
   };
 }
 
-/** Mount Swagger UI + spec JSON (đặt TRƯỚC not-found/error-handler trong app.ts) */
-export function mountSwagger(
-  app: Express,
-  document: Record<string, unknown>,
-): void {
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(document));
-  app.get("/api-docs.json", (_req, res) => {
-    res.json(document);
-  });
+/** Mount Swagger UI + spec JSON trên Hono. */
+export function mountSwagger(app: Hono<AppEnv>, document: Record<string, unknown>): void {
+  app.get("/api-docs", swaggerUI({ url: "/api-docs.json" }));
+  app.get("/api-docs.json", (c) => c.json(document));
 }

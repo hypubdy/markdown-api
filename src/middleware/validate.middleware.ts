@@ -1,39 +1,45 @@
-import type { NextFunction, Request, Response } from "express";
+import type { MiddlewareHandler } from "hono";
 import { ZodError, ZodObject, type ZodTypeAny } from "zod";
+import type { AppEnv, ValidatedRequest } from "../types/hono";
 import { ApiError } from "../utils/ApiError";
 
-/**
- * Middleware validate dữ liệu đầu vào theo schema Zod.
- * Schema mong đợi dạng z.object({ body?, query?, params? }) —
- * chỉ những nguồn nào khai báo trong schema mới bị ghi đè bằng dữ liệu đã chuẩn hoá.
- */
-export function validate(schema: ZodTypeAny) {
-  return (req: Request, _res: Response, next: NextFunction) => {
+/** Validate body/query/params và lưu dữ liệu đã chuẩn hoá vào Hono context. */
+export function validate(schema: ZodTypeAny): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
     if (!(schema instanceof ZodObject)) {
-      return next(new Error("validate() chỉ hỗ trợ z.object()"));
+      throw new Error("validate() chỉ hỗ trợ z.object()");
     }
 
     try {
-      const parsed = schema.parse({
-        body: req.body,
-        query: req.query,
-        params: req.params,
-      });
-
-      for (const source of Object.keys(schema.shape)) {
-        (req as unknown as Record<string, unknown>)[source] = parsed[source];
+      const shape = schema.shape as Record<string, ZodTypeAny>;
+      const input: ValidatedRequest = {};
+      if (shape.body) {
+        try {
+          input.body = await c.req.json();
+        } catch {
+          input.body = undefined;
+        }
       }
+      if (shape.query) input.query = c.req.query();
+      if (shape.params) input.params = c.req.param();
 
-      next();
+      c.set("validated", schema.parse(input) as ValidatedRequest);
+      await next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const details = error.issues.map((issue) => ({
-          field: issue.path.join("."),
-          message: issue.message,
-        }));
-        return next(ApiError.badRequest("Dữ liệu đầu vào không hợp lệ", details));
+        throw ApiError.badRequest(
+          "Dữ liệu đầu vào không hợp lệ",
+          error.issues.map((issue) => ({
+            field: issue.path.join("."),
+            message: issue.message,
+          })),
+        );
       }
-      next(error);
+      throw error;
     }
   };
+}
+
+export function validated<T>(c: { get(key: "validated"): ValidatedRequest | undefined }, source: keyof ValidatedRequest): T {
+  return c.get("validated")?.[source] as T;
 }

@@ -1,0 +1,64 @@
+name: Deploy Cloudflare Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cloudflare-worker-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Load one .env GitHub Secret
+        shell: bash
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          test -n "$ENV_FILE" || { echo "Missing ENV_FILE secret"; exit 1; }
+          printf '%s\n' "$ENV_FILE" > .env
+          set -a
+          . ./.env
+          set +a
+          {
+            echo "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN"
+            echo "CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID"
+          } >> "$GITHUB_ENV"
+          # Keep only application secrets for Cloudflare Worker secret storage.
+          grep -E '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|CLERK_PUBLISHABLE_KEY|CLERK_SECRET_KEY|JWT_SECRET)=' .env > .runtime-secrets
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify
+        run: npm run typecheck && npm test
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: Upload application secrets to Worker
+        shell: bash
+        run: npx wrangler secret bulk .runtime-secrets
+
+      - name: Remove temporary secrets
+        if: always()
+        run: rm -f .env .runtime-secrets

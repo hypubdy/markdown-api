@@ -1,7 +1,11 @@
-import type { NextFunction, Request, Response } from "express";
-import { ApiError } from "../utils/ApiError";
+import type { NotFoundHandler } from "hono";
+import type { AppEnv } from "../types/hono";
 
-/** Mọi request không khớp route nào đều đi qua đây */
-export function notFoundHandler(req: Request, _res: Response, next: NextFunction) {
-  next(ApiError.notFound(`Không tìm thấy route: ${req.method} ${req.originalUrl}`));
-}
+export const notFoundHandler: NotFoundHandler<AppEnv> = (c) =>
+  c.json(
+    {
+      success: false,
+      message: `Không tìm thấy route: ${c.req.method} ${c.req.path}`,
+    },
+    404,
+  );

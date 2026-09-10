@@ -21,7 +21,13 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // File test chế độ Clerk chạy riêng worker với AUTH_PROVIDER=clerk
+    // (npm run test:clerk — vitest.clerk.config.ts) — không chạy trong suite local.
+    exclude: ["tests/clerk.test.ts"],
     env: {
+      // Môi trường test luôn dùng provider LOCAL (JWT nội bộ) + SQLite —
+      // KHÔNG đọc AUTH_PROVIDER từ .env (nơi có thể để "clerk" cho dev/prod).
+      AUTH_PROVIDER: "local",
       DB_DRIVER: "sqlite",
       DB_FILE: fileDb ?? ":memory:",
     },

@@ -1,6 +1,8 @@
 node_modules/
 .cache-npm/
 dist/
+dist-worker/
+.wrangler/
 coverage/
 .env
 *.sqlite
