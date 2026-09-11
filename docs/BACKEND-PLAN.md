@@ -72,7 +72,7 @@ Filter mặc định mọi danh sách: `owner_id = ? AND deleted_at IS NULL`.
 ### 3.3. Tags — cần đăng nhập
 | Method | Path | Mô tả |
 |---|---|---|
-| GET | `/tags` | Tags của mình kèm `count` note đang sống |
+| GET | `/tags` | Tags của mình kèm `count` note đang sống (kể cả tag count 0) |
 | DELETE | `/tags/:name` | Xoá tag khỏi mọi note |
 
 ### 3.4. Public — KHÔNG cần đăng nhập (mount riêng ngoài authenticate)

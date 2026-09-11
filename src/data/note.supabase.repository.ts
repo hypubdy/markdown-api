@@ -216,7 +216,7 @@ export class SupabaseNoteRepository implements NoteRepository {
 
   async listTagsWithCount(ownerId: string): Promise<TagCount[]> {
     // Lấy toàn bộ note ĐANG SỐNG của owner kèm tag (nested qua note_tags→tags),
-    // rồi đếm trong JS. Đơn giản, đúng ngữ nghĩa (chỉ tag có ≥1 note sống, sắp theo tên).
+    // rồi đếm trong JS; tag không còn note sống sẽ có count = 0.
     const { data, error } = await this.sb
       .from("notes")
       .select("id, note_tags(tags(name))")
@@ -225,6 +225,14 @@ export class SupabaseNoteRepository implements NoteRepository {
     if (error) throw error;
 
     const counts = new Map<string, number>();
+    const { data: allTags, error: allTagsError } = await this.sb
+      .from("tags")
+      .select("name")
+      .eq("owner_id", ownerId);
+    if (allTagsError) throw allTagsError;
+    for (const tag of (allTags as Array<{ name: string }> | null) ?? []) {
+      counts.set(tag.name, 0);
+    }
     const notes = (data as Array<{ note_tags?: unknown }> | null) ?? [];
     for (const note of notes) {
       const tags = (note.note_tags ?? []) as Array<{

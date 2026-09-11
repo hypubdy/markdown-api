@@ -356,7 +356,7 @@ const notesCases: TestCase[] = [
     expect: [{ path: "data", length: 1 }],
   },
 
-  // ── xoá mềm note 2 → tag không còn note sống → /tags rỗng ──────────
+  // ── xoá mềm note 2 → tag vẫn tồn tại nhưng count = 0 ────────────────
   {
     name: "DELETE /notes/$note2Id (A) → 204 (soft-delete note 2)",
     method: "delete",
@@ -365,12 +365,16 @@ const notesCases: TestCase[] = [
     expectedStatus: 204,
   },
   {
-    name: "GET /tags (A) → 200, rỗng (markdown/hoc không còn note SỐNG nào mang)",
+    name: "GET /tags (A) → 200, vẫn trả markdown/hoc với count 0",
     method: "get",
     path: "/tags",
     token: "$userAToken",
     expectedStatus: 200,
-    expect: [{ path: "data", length: 0 }],
+    expect: [
+      { path: "data", length: 2 },
+      { path: "data", includesItem: { field: "name", equals: "markdown" } },
+      { path: "data", includesItem: { field: "count", equals: 0 } },
+    ],
   },
 
   // ── slice tag-sở-hữu + validate (Red Agent Phase 4) ────────────────
@@ -383,6 +387,26 @@ const notesCases: TestCase[] = [
     expectedStatus: 201,
     expect: [{ path: "data.id", isUuid: true }],
     save: { note3Id: "data.id" },
+  },
+  {
+    name: "PATCH /notes/$note3Id (A) gỡ taga → chỉ bỏ liên kết, tag vẫn còn count 0",
+    method: "patch",
+    path: "/notes/$note3Id",
+    token: "$userAToken",
+    body: { tagNames: ["tagb"] },
+    expectedStatus: 200,
+    expect: [{ path: "data.tags", length: 1 }],
+  },
+  {
+    name: "GET /tags (A) sau khi gỡ taga → taga vẫn tồn tại count 0",
+    method: "get",
+    path: "/tags",
+    token: "$userAToken",
+    expectedStatus: 200,
+    expect: [
+      { path: "data", includesItem: { field: "name", equals: "taga" } },
+      { path: "data", includesItem: { field: "count", equals: 0 } },
+    ],
   },
   {
     name: "GET /tags (A) → 200, có tag taga (không assert tổng length)",

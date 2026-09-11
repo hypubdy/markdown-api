@@ -206,8 +206,8 @@ export class D1NoteRepository implements NoteRepository {
       .prepare(
         `SELECT t.name AS name, COUNT(n.id) AS count
          FROM tags t
-         JOIN note_tags nt ON nt.tag_id = t.id
-         JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
+         LEFT JOIN note_tags nt ON nt.tag_id = t.id
+         LEFT JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
          WHERE t.owner_id = ?
          GROUP BY t.id, t.name
          ORDER BY t.name ASC`,

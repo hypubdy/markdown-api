@@ -394,7 +394,7 @@ Mọi route nằm dưới prefix `/api/v1`.
 | POST   | `/notes/:id/share`      | chủ sở hữu | Bật chia sẻ public → `{shareToken, url}` |
 | DELETE | `/notes/:id/share`      | chủ sở hữu | Thu hồi chia sẻ |
 | GET    | `/public/notes/:shareToken` | **công khai** | Xem note được chia sẻ (không cần đăng nhập) |
-| GET    | `/tags`                 | đã đăng nhập | Tags của mình kèm `count` (chỉ note đang sống) |
+| GET    | `/tags`                 | đã đăng nhập | Tags của mình kèm `count` (chỉ note đang sống, có thể là 0) |
 | DELETE | `/tags/:name`           | đã đăng nhập | Xoá tag (không của mình/không tồn tại → 404) |
 
 Tài khoản demo được tạo sẵn khi khởi động: `admin@example.com` / `admin123`.

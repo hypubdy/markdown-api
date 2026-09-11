@@ -125,7 +125,7 @@ export interface NoteRepository {
   // ── Tags ─────────────────────────────────────────────────────────────
   /**
    * Tags của owner kèm count = số note ĐANG SỐNG mang tag đó.
-   * Chỉ trả về tag có ≥ 1 note sống (JOIN nội); sắp theo name ASC.
+   * Trả về cả tag chưa gắn note sống nào (count = 0); sắp theo name ASC.
    */
   listTagsWithCount(ownerId: string): Promise<TagCount[]>;
 
